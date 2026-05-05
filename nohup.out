@@ -1,0 +1,59 @@
+ubuntu@129-146-178-102:~$ python train.py   --output_dir ./out   --per_device_train_batch_size 4   --gradient_accumulation_steps 16   --num_train_epochs 1   --bf16  --dataloader_num_workers 4
+Sliding Window Attention is enabled but not implemented for `sdpa`; unexpected results may be encountered.
+Loading checkpoint shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:00<00:00,  6.53it/s]
+You are using an old version of the checkpointing format that is deprecated (We will also silently ignore `gradient_checkpointing_kwargs` in case you passed it).Please update to the new format on your modeling file. To use the new format, you need to completely remove the definition of the method `_set_gradient_checkpointing` in your model.
+<audio_start>: 151688
+<audio_patch>: 151690
+<audio_end>: 151689
+probe_ids: [151688, 151690, 151690, 151690, 151689]
+trainable params: 40,370,176 || all params: 8,355,549,440 || trainable%: 0.4832
+Loaded training rows: 19479 / scanned 19480 (skipped missing audio: 1)
+Training examples: 19479 | per_device_batch_size: 4 | gradient_accumulation_steps: 16 | world_size: 1 | effective_batch_size: 64 | estimated optimizer steps per epoch: 305
+No label_names provided for model class `PeftModelForCausalLM`. Since `PeftModel` hides base models input arguments, if label_names is not given, label_names can't be set automatically within `Trainer`. Note that empty label_names list will be used instead.
+  0%|                                                                                                                                                                                                                 | 0/304 [00:00<?, ?it/s]/home/ubuntu/.local/lib/python3.10/site-packages/torch/utils/checkpoint.py:1399: FutureWarning: `torch.cpu.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cpu', args...)` instead.
+  with device_autocast_ctx, torch.cpu.amp.autocast(**cpu_autocast_kwargs), recompute_context:  # type: ignore[attr-defined]
+{'loss': 15.2567, 'grad_norm': 8.216989517211914, 'learning_rate': 0.0002, 'epoch': 0.03}                                                                                                                                                     
+{'loss': 0.6039, 'grad_norm': 6.88424825668335, 'learning_rate': 0.00019942962326340537, 'epoch': 0.07}                                                                                                                                       
+{'loss': 0.5074, 'grad_norm': 5.6275315284729, 'learning_rate': 0.0001977249996460544, 'epoch': 0.1}                                                                                                                                          
+{'loss': 0.4447, 'grad_norm': 6.635484218597412, 'learning_rate': 0.00019490557470106686, 'epoch': 0.13}                                                                                                                                      
+{'loss': 0.4222, 'grad_norm': 3.4486942291259766, 'learning_rate': 0.00019100351111642666, 'epoch': 0.16}                                                                                                                                     
+{'loss': 0.3472, 'grad_norm': 3.5005950927734375, 'learning_rate': 0.00018606332181800165, 'epoch': 0.2}                                                                                                                                      
+{'loss': 0.4417, 'grad_norm': 2.442995071411133, 'learning_rate': 0.00018014136218679567, 'epoch': 0.23}                                                                                                                                      
+{'loss': 0.3378, 'grad_norm': 6.2079010009765625, 'learning_rate': 0.00017330518718298264, 'epoch': 0.26}                                                                                                                                     
+{'loss': 0.3547, 'grad_norm': 3.8615775108337402, 'learning_rate': 0.0001656327807103518, 'epoch': 0.3}                                                                                                                                       
+{'loss': 0.3978, 'grad_norm': 4.057944297790527, 'learning_rate': 0.00015721166601221698, 'epoch': 0.33}                                                                                                                                      
+{'loss': 0.2475, 'grad_norm': 3.660301685333252, 'learning_rate': 0.00014813790724697832, 'epoch': 0.36}                                                                                                                                      
+{'loss': 0.3386, 'grad_norm': 4.460036754608154, 'learning_rate': 0.00013851501363289906, 'epoch': 0.39}                                                                                                                                      
+{'loss': 0.3353, 'grad_norm': 3.258727788925171, 'learning_rate': 0.00012845275866310324, 'epoch': 0.43}                                                                                                                                      
+{'loss': 0.267, 'grad_norm': 2.5414648056030273, 'learning_rate': 0.0001180659278606399, 'epoch': 0.46}                                                                                                                                       
+{'loss': 0.2125, 'grad_norm': 1.8614444732666016, 'learning_rate': 0.00010747300935864243, 'epoch': 0.49}                                                                                                                                     
+{'loss': 0.3453, 'grad_norm': 2.8420746326446533, 'learning_rate': 9.679484224283449e-05, 'epoch': 0.53}                                                                                                                                      
+{'loss': 0.2894, 'grad_norm': 3.1957058906555176, 'learning_rate': 8.615323807546258e-05, 'epoch': 0.56}                                                                                                                                      
+{'loss': 0.3291, 'grad_norm': 4.1981964111328125, 'learning_rate': 7.566959132566915e-05, 'epoch': 0.59}                                                                                                                                      
+{'loss': 0.2228, 'grad_norm': 2.0053703784942627, 'learning_rate': 6.546349455786926e-05, 'epoch': 0.62}                                                                                                                                      
+{'loss': 0.239, 'grad_norm': 3.2723844051361084, 'learning_rate': 5.5651374175418656e-05, 'epoch': 0.66}                                                                                                                                      
+{'loss': 0.2129, 'grad_norm': 2.457026958465576, 'learning_rate': 4.634516228237372e-05, 'epoch': 0.69}                                                                                                                                       
+{'loss': 0.1954, 'grad_norm': 3.186279296875, 'learning_rate': 3.7651019814126654e-05, 'epoch': 0.72}                                                                                                                                         
+{'loss': 0.2294, 'grad_norm': 3.4412810802459717, 'learning_rate': 2.966812550284803e-05, 'epoch': 0.76}                                                                                                                                      
+{'loss': 0.2523, 'grad_norm': 1.7805488109588623, 'learning_rate': 2.248754449265483e-05, 'epoch': 0.79}                                                                                                                                      
+{'loss': 0.2102, 'grad_norm': 1.8019291162490845, 'learning_rate': 1.619118951081594e-05, 'epoch': 0.82}                                                                                                                                      
+{'loss': 0.2397, 'grad_norm': 2.976512908935547, 'learning_rate': 1.0850886445471054e-05, 'epoch': 0.85}                                                                                                                                      
+{'loss': 0.199, 'grad_norm': 1.4131733179092407, 'learning_rate': 6.527554989316897e-06, 'epoch': 0.89}                                                                                                                                       
+{'loss': 0.2003, 'grad_norm': 0.6420819759368896, 'learning_rate': 3.270513696097055e-06, 'epoch': 0.92}                                                                                                                                      
+{'loss': 0.2259, 'grad_norm': 1.4677071571350098, 'learning_rate': 1.1169173774871478e-06, 'epoch': 0.95}                                                                                                                                     
+{'loss': 0.1954, 'grad_norm': 2.9449758529663086, 'learning_rate': 9.133325829017158e-08, 'epoch': 0.99}                                                                                                                                      
+{'train_runtime': 3276.1897, 'train_samples_per_second': 5.946, 'train_steps_per_second': 0.093, 'train_loss': 0.7947689435983959, 'epoch': 1.0}                                                                                              
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [54:36<00:00, 10.78s/it]
+ubuntu@129-146-178-102:~$ USE_TF=0 USE_FLAX=0 TRANSFORMERS_NO_TF=1 TRANSFORMERS_NO_FLAX=1 python eval_dcase.py \
+  --lora_path /home/ubuntu/out \
+  --data_dir /home/ubuntu/data/DCASE2026-Task5-DevSet \
+  --output_csv /home/ubuntu/dcase_dev_predictions.csv
+Sliding Window Attention is enabled but not implemented for `sdpa`; unexpected results may be encountered.
+Loading checkpoint shards: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 4/4 [00:00<00:00,  7.21it/s]
+Evaluating:   9%|███████████████▊                                                                                                                                                                          | 137/1607 [02:30<19:25,  1.26it/s][W505 07:27:27.859756252 NNPACK.cpp:61] Could not initialize NNPACK! Reason: Unsupported hardware.
+Evaluating: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1607/1607 [27:47<00:00,  1.04s/it]
+Total: 1607
+Correct: 830
+Accuracy: 0.516490 (51.65%)
+Saved predictions to /home/ubuntu/dcase_dev_predictions.csv
+ubuntu@129-146-178-102:~$ 

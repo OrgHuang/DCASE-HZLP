@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual/env and machine-local folders
+.env
+.venv/
+venv/
+env/
+.cache/
+.config/
+.local/
+.vscode-server/
+.ipython/
+.jupyter/
+.keras/
+.nv/
+.dotnet/
+.ssh/
+.claude/
+.claude.json
+.codex/
+.agents/
+.wget-hsts
+.sudo_as_admin_successful
+
+# Logs and temporary files
+*.log
+!nohup.out
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Datasets
+data/
+
+# Training outputs and predictions
+out/
+cp/
+runs/
+wandb/
+outputs/
+checkpoints/
+checkpoint-*/
+*_predictions.csv
+dcase_dev_predictions*.csv
+
+# Model weights and generated binary artifacts
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.gguf
+*.npz
+*.npy
+
+# Audio/media artifacts
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.mp4
+
+# Keep source/config files from local model snapshots, but not weights/assets.
+model/**/.git/
+model/**/assets/
+model/**/token2wav/
+model/**/git-lfs-*/
