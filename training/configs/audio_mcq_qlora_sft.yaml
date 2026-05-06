@@ -1,0 +1,56 @@
+### model
+model_name_or_path: ../pretrained_models/Fun-Audio-Chat-8B
+trust_remote_code: true
+flash_attn: sdpa
+quantization_bit: 4
+double_quantization: true
+quantization_type: nf4
+print_param_status: true
+
+### method
+stage: sft
+do_train: true
+do_eval: false
+finetuning_type: lora
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target: all
+upcast_layernorm: true
+
+### dataset
+dataset: audio-mcq-strongac-gemini-cot
+template: funaudiochat
+cutoff_len: 3072
+overwrite_cache: true
+preprocessing_num_workers: 8
+dataloader_num_workers: 2
+
+### output
+output_dir: saves/Fun-Audio-Chat-8B/audio_mcq_qlora_sft
+logging_steps: 10
+save_strategy: steps
+save_steps: 200
+save_total_limit: 2
+plot_loss: true
+overwrite_output_dir: true
+report_to: none
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 2.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+bf16: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+### eval
+# To enable validation later, set:
+# do_eval: true
+# val_size: 0.01
+# per_device_eval_batch_size: 1
+# eval_strategy: steps
+# eval_steps: 200

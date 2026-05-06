@@ -1,71 +1,84 @@
-# Python
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 .Python
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build and packaging
 build/
-develop-eggs/
 dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
 *.egg-info/
 .installed.cfg
 *.egg
+*.whl
 
 # Virtual environments
+.venv/
 venv/
 env/
 ENV/
-.venv
 
-# IDEs
+# Editors and OS files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
+Thumbs.db
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# Local environment files
+.env
+.env.*
+!.env.example
+web_demo/client/.env.local
+web_demo/client/*.pem
+web_demo/client/*.key
 
-# Model checkpoints and outputs
+# Node / frontend artifacts
+web_demo/client/node_modules/
+web_demo/client/dist/
+web_demo/client/.vite/
+
+# Training and runtime logs
+*.log
+logs/
+training/logs/
+wandb/
+tensorboard/
+swanlab/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local caches and temp files
+.cache/
+tmp/
+temp/
+nohup.out
+
+# Datasets and model artifacts
+datasets/
+training/datasets/
 pretrained_models/
 checkpoints/
 output/
 outputs/
 saves/
-*.pth
-*.pt
-*.bin
-*.safetensors
-!utils/new_spk2info.pt
-
-# Logs
-*.log
-logs/
-wandb/
-tensorboard/
-
-# Data
-datasets/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Distribution
-*.whl
-
+training/saves/

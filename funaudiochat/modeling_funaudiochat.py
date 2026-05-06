@@ -1114,8 +1114,11 @@ class FunAudioChatForConditionalGeneration(FunAudioChatPreTrainedModel, Generati
         speech_logits = None
         if self.audio_invert_tower is not None:
             last_hidden_state = outputs.hidden_states[-1]
+            has_valid_speech_supervision = bool(
+                speech_labels is not None and speech_labels.ne(self.config.ignore_index).any().item()
+            )
 
-            if speech_labels is not None:
+            if has_valid_speech_supervision:
                 audio_embeds = self.audio_tower(
                     speech_labels.masked_fill(speech_labels == self.config.ignore_index, self.audio_pad_token_id),
                     return_dict=True,
@@ -1123,7 +1126,10 @@ class FunAudioChatForConditionalGeneration(FunAudioChatPreTrainedModel, Generati
             else:
                 audio_embeds = None
 
-            if not self.sp_gen_kwargs['disable_speech']:
+            should_run_speech_decoder = not self.sp_gen_kwargs['disable_speech'] and (
+                labels is None or has_valid_speech_supervision
+            )
+            if should_run_speech_decoder:
                 speech_inputs_embeds = last_hidden_state
                 if text_embeds is None:
                     text_embeds = self.get_input_embeddings()(input_ids)
