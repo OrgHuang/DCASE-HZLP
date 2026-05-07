@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -37,10 +38,28 @@ def parse_args() -> argparse.Namespace:
         help="Whether to supervise with Gemini CoT plus final answer, or answer only.",
     )
     parser.add_argument(
+        "--reasoning-field",
+        type=str,
+        default="gemini_cot",
+        help="Primary json field used as the reasoning target when target-mode=cot_answer.",
+    )
+    parser.add_argument(
+        "--fallback-reasoning-field",
+        type=str,
+        default=None,
+        help="Optional fallback json field when the primary reasoning field is empty.",
+    )
+    parser.add_argument(
         "--answer-format",
         choices=("letter", "text", "letter_and_text"),
         default="letter_and_text",
         help="How the final answer is rendered in the assistant target.",
+    )
+    parser.add_argument(
+        "--audio-position",
+        choices=("audio_first", "text_first"),
+        default="audio_first",
+        help="Whether the user message places the audio placeholder before or after the text question block.",
     )
     parser.add_argument(
         "--max-samples",
@@ -87,6 +106,12 @@ def build_question_prompt(question: str, choices: list[str]) -> str:
     return "\n".join(lines)
 
 
+def build_user_content(prompt: str, audio_position: str) -> str:
+    if audio_position == "text_first":
+        return f"{prompt}\n{AUDIO_TEMPLATE}"
+    return f"{AUDIO_TEMPLATE}\n{prompt}"
+
+
 def format_final_answer(answer: str, answer_letter: str, answer_format: str) -> str:
     if answer_format == "letter":
         return f"({answer_letter})"
@@ -95,12 +120,40 @@ def format_final_answer(answer: str, answer_letter: str, answer_format: str) -> 
     return f"({answer_letter}) {answer}"
 
 
-def build_target(row: dict[str, Any], answer_letter: str, answer_format: str, target_mode: str) -> str:
+def pick_reasoning_text(row: dict[str, Any], reasoning_field: str, fallback_reasoning_field: str | None) -> str:
+    primary = str(row.get(reasoning_field, "")).strip()
+    if primary:
+        return primary
+    if fallback_reasoning_field:
+        return str(row.get(fallback_reasoning_field, "")).strip()
+    return ""
+
+
+def sanitize_reasoning(reasoning: str) -> str:
+    text = str(reasoning).strip()
+    if not text:
+        return ""
+
+    text = text.replace("```html", "").replace("```", "").strip()
+    text = re.sub(r"(?is)<answer>\s*.*?\s*</answer>", "", text)
+    text = re.sub(r"(?im)^\s*final answer\s*:\s*.*$", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def build_target(
+    row: dict[str, Any],
+    answer_letter: str,
+    answer_format: str,
+    target_mode: str,
+    reasoning_field: str,
+    fallback_reasoning_field: str | None,
+) -> str:
     final_answer = format_final_answer(str(row["answer"]).strip(), answer_letter, answer_format)
     if target_mode == "answer_only":
         return final_answer
 
-    reasoning = str(row.get("gemini_cot", "")).strip()
+    reasoning = sanitize_reasoning(pick_reasoning_text(row, reasoning_field, fallback_reasoning_field))
     if reasoning:
         return f"{reasoning}\n\nFinal answer: {final_answer}"
     return f"Final answer: {final_answer}"
@@ -132,17 +185,50 @@ def build_audio_payload(audio_path: Path) -> str:
     return json.dumps(audio_payload, ensure_ascii=False, sort_keys=True)
 
 
-def convert_row(row: dict[str, Any], dataset_root: Path, system_prompt: str, answer_format: str, target_mode: str) -> dict[str, Any]:
+def get_question_text(row: dict[str, Any]) -> str:
+    for key in ("question", "question_text"):
+        value = row.get(key)
+        if value is not None:
+            return str(value)
+    raise KeyError("Expected one of ['question', 'question_text'] in dataset row.")
+
+
+def get_choices(row: dict[str, Any]) -> list[str]:
+    for key in ("choices", "multi_choice"):
+        value = row.get(key)
+        if value is not None:
+            return [str(item) for item in value]
+    raise KeyError("Expected one of ['choices', 'multi_choice'] in dataset row.")
+
+
+def convert_row(
+    row: dict[str, Any],
+    dataset_root: Path,
+    system_prompt: str,
+    answer_format: str,
+    target_mode: str,
+    reasoning_field: str,
+    fallback_reasoning_field: str | None,
+    audio_position: str,
+) -> dict[str, Any]:
     audio_path = dataset_root / row["audio_path"]
     if not audio_path.exists():
         raise FileNotFoundError(f"Missing audio file: {audio_path}")
 
-    answer_letter = resolve_answer_letter(str(row["answer"]), list(row["choices"]))
-    prompt = build_question_prompt(str(row["question"]).strip(), list(row["choices"]))
-    target = build_target(row, answer_letter, answer_format, target_mode)
+    choices = get_choices(row)
+    answer_letter = resolve_answer_letter(str(row["answer"]), choices)
+    prompt = build_question_prompt(get_question_text(row).strip(), choices)
+    target = build_target(
+        row=row,
+        answer_letter=answer_letter,
+        answer_format=answer_format,
+        target_mode=target_mode,
+        reasoning_field=reasoning_field,
+        fallback_reasoning_field=fallback_reasoning_field,
+    )
 
     messages = [
-        {"role": "user", "content": f"{AUDIO_TEMPLATE}\n{prompt}"},
+        {"role": "user", "content": build_user_content(prompt, audio_position)},
         {"role": "assistant", "content": target},
     ]
 
@@ -176,6 +262,9 @@ def main() -> None:
                         system_prompt=args.system_prompt,
                         answer_format=args.answer_format,
                         target_mode=args.target_mode,
+                        reasoning_field=args.reasoning_field,
+                        fallback_reasoning_field=args.fallback_reasoning_field,
+                        audio_position=args.audio_position,
                     )
                 )
             except ValueError as exc:
@@ -202,7 +291,10 @@ def main() -> None:
         "skipped_alignment": skipped_alignment,
         "system_prompt": args.system_prompt,
         "target_mode": args.target_mode,
+        "reasoning_field": args.reasoning_field,
+        "fallback_reasoning_field": args.fallback_reasoning_field,
         "answer_format": args.answer_format,
+        "audio_position": args.audio_position,
         "shuffle": args.shuffle,
         "seed": args.seed,
     }

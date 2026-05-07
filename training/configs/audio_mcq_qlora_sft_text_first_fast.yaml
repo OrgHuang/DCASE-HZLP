@@ -5,7 +5,7 @@ flash_attn: fa2
 quantization_bit: 4
 double_quantization: true
 quantization_type: nf4
-print_param_status: true
+print_param_status: false
 
 ### method
 stage: sft
@@ -19,26 +19,26 @@ lora_target: all
 upcast_layernorm: true
 
 ### dataset
-dataset: audio-mcq-strongac-gemini-cot
+dataset: audio-mcq-strongac-gemini-cot-text-first
 template: funaudiochat
 cutoff_len: 3072
 overwrite_cache: true
 preprocessing_num_workers: 8
-dataloader_num_workers: 2
+dataloader_num_workers: 4
 
 ### output
-output_dir: saves/Fun-Audio-Chat-8B/audio_mcq_qlora_sft
-logging_steps: 10
+output_dir: saves/Fun-Audio-Chat-8B/audio_mcq_qlora_sft_text_first_fast
+logging_steps: 20
 save_strategy: steps
-save_steps: 200
+save_steps: 500
 save_total_limit: 2
 plot_loss: true
 overwrite_output_dir: true
 report_to: none
 
 ### train
-per_device_train_batch_size: 1
-gradient_accumulation_steps: 16
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 4
 learning_rate: 2.0e-4
 num_train_epochs: 3.0
 lr_scheduler_type: cosine

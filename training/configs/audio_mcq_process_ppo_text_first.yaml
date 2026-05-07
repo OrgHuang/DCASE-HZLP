@@ -1,5 +1,6 @@
 ### model
 model_name_or_path: ../pretrained_models/Fun-Audio-Chat-8B
+adapter_name_or_path: saves/Fun-Audio-Chat-8B/audio_mcq_qlora_sft_text_first
 trust_remote_code: true
 flash_attn: fa2
 quantization_bit: 4
@@ -8,18 +9,24 @@ quantization_type: nf4
 print_param_status: true
 
 ### method
-stage: sft
+stage: ppo
 do_train: true
-do_eval: false
 finetuning_type: lora
 lora_rank: 16
 lora_alpha: 32
 lora_dropout: 0.05
 lora_target: all
 upcast_layernorm: true
+reward_model: http://127.0.0.1:8001/reward
+reward_model_type: api
+ppo_buffer_size: 2
+ppo_epochs: 2
+ppo_target: 6.0
+ppo_score_norm: false
+ppo_whiten_rewards: false
 
 ### dataset
-dataset: audio-mcq-strongac-gemini-cot
+dataset: audio-mcq-strongac-gemini-cot-text-first
 template: funaudiochat
 cutoff_len: 3072
 overwrite_cache: true
@@ -27,10 +34,10 @@ preprocessing_num_workers: 8
 dataloader_num_workers: 2
 
 ### output
-output_dir: saves/Fun-Audio-Chat-8B/audio_mcq_qlora_sft
-logging_steps: 10
+output_dir: saves/Fun-Audio-Chat-8B/audio_mcq_process_ppo_text_first_stat_reward
+logging_steps: 5
 save_strategy: steps
-save_steps: 200
+save_steps: 100
 save_total_limit: 2
 plot_loss: true
 overwrite_output_dir: true
@@ -38,19 +45,15 @@ report_to: none
 
 ### train
 per_device_train_batch_size: 1
-gradient_accumulation_steps: 16
-learning_rate: 2.0e-4
-num_train_epochs: 3.0
+gradient_accumulation_steps: 2
+learning_rate: 5.0e-6
+num_train_epochs: 1.0
 lr_scheduler_type: cosine
 warmup_ratio: 0.03
 bf16: true
 ddp_timeout: 180000000
-resume_from_checkpoint: null
 
-### eval
-# To enable validation later, set:
-# do_eval: true
-# val_size: 0.01
-# per_device_eval_batch_size: 1
-# eval_strategy: steps
-# eval_steps: 200
+### generate
+max_new_tokens: 96
+top_k: 0
+top_p: 0.9

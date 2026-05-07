@@ -1,7 +1,7 @@
 ### model
 model_name_or_path: ../pretrained_models/Fun-Audio-Chat-8B
 trust_remote_code: true
-flash_attn: sdpa
+flash_attn: fa2
 quantization_bit: 4
 double_quantization: true
 quantization_type: nf4

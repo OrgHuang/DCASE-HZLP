@@ -43,5 +43,53 @@
       "user_tag": "user",
       "assistant_tag": "assistant"
     }
+  },
+  "audio-mcq-strongac-gemini-cot-text-first": {
+    "file_name": "../datasets/audio-mcq-strongac-gemini-cot-text-first/train.jsonl",
+    "formatting": "sharegpt",
+    "columns": {
+      "system": "system",
+      "messages": "messages",
+      "audios": "audio"
+    },
+    "tags": {
+      "role_tag": "role",
+      "content_tag": "content",
+      "user_tag": "user",
+      "assistant_tag": "assistant"
+    }
+  },
+  "audio-mcq-teacher-lite-cot": {
+    "file_name": "../datasets/audio-mcq-teacher-lite-cot/train.jsonl",
+    "formatting": "sharegpt",
+    "columns": {
+      "system": "system",
+      "messages": "messages",
+      "audios": "audio"
+    },
+    "tags": {
+      "role_tag": "role",
+      "content_tag": "content",
+      "user_tag": "user",
+      "assistant_tag": "assistant"
+    }
+  },
+  "audio-mcq-strongac-process-rm-text-first": {
+    "file_name": "../datasets/audio-mcq-strongac-process-rm-text-first/train.jsonl",
+    "formatting": "sharegpt",
+    "ranking": true,
+    "columns": {
+      "system": "system",
+      "messages": "messages",
+      "audios": "audio",
+      "chosen": "chosen",
+      "rejected": "rejected"
+    },
+    "tags": {
+      "role_tag": "role",
+      "content_tag": "content",
+      "user_tag": "user",
+      "assistant_tag": "assistant"
+    }
   }
 }

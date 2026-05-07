@@ -40,7 +40,7 @@ cd /home/org/DCASE/Fun-Audio-Chat/model/Fun-Audio-Chat/third_party/LLaMA-Factory
 conda run -n FunAudioChat pip install -e . --no-build-isolation
 ```
 
-`flash-attn` is optional for this setup because the provided configs use `flash_attn: sdpa`.
+`flash-attn` is required if you want the provided AudioMCQ configs to run with `flash_attn: fa2`.
 
 ## 3. Run a smoke test
 

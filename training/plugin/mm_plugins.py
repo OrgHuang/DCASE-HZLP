@@ -30,6 +30,8 @@ from typing_extensions import override
 
 logger = logging.getLogger(__name__)
 
+ESTIMATED_AUDIO_TOKEN_FPS = 25
+
 if TYPE_CHECKING:
     from llamafactory.data.mm_plugin import ImageInput, VideoInput, AudioInput, MMProcessor
 
@@ -73,6 +75,40 @@ def load_audio_batch_default(paths: list[str], sampling_rate: int) -> list[np.nd
     return audios
 
 
+def _is_array_like_audio(audio: object) -> bool:
+    return isinstance(audio, np.ndarray) or (
+        isinstance(audio, list) and len(audio) > 0 and isinstance(audio[0], (int, float, np.integer, np.floating))
+    )
+
+
+def _estimate_audio_token_string(audio: Union[str, np.ndarray, list[float]], processor: "MMProcessor") -> str:
+    sampling_rate = getattr(processor, "audio_sampling_rate", 16000) or 16000
+    audio_pad_token = getattr(processor, "audio_pad_token", "<|audio_pad|>")
+
+    if _is_array_like_audio(audio):
+        audio_array = np.asarray(audio)
+        duration_seconds = float(audio_array.shape[0]) / float(sampling_rate)
+    else:
+        audio_path = str(audio)
+        try:
+            import soundfile as sf
+
+            info = sf.info(audio_path)
+            if not info.frames or not info.samplerate:
+                raise RuntimeError("Invalid audio metadata.")
+            duration_seconds = float(info.frames) / float(info.samplerate)
+        except Exception:
+            try:
+                import librosa
+            except ImportError as exc:
+                raise ImportError("librosa is required for audio duration estimation.") from exc
+
+            duration_seconds = float(librosa.get_duration(path=audio_path))
+
+    num_audio_tokens = max(1, int(duration_seconds * ESTIMATED_AUDIO_TOKEN_FPS))
+    return audio_pad_token * num_audio_tokens
+
+
 @dataclass
 class FunAudioChatPlugin(BasePlugin):
     """
@@ -96,6 +132,79 @@ class FunAudioChatPlugin(BasePlugin):
             List of audio arrays
         """
         return load_audio_batch_default(paths, sampling_rate)
+
+    def _parse_audio_input(self, audio: "AudioInput", processor: "MMProcessor") -> dict[str, object]:
+        if _is_array_like_audio(audio):
+            audio_array = np.asarray(audio, dtype=np.float32)
+            return {
+                "path": "",
+                "wav_path": "",
+                "text": "",
+                "token": _estimate_audio_token_string(audio_array, processor),
+                "_audio_source": audio_array,
+                "_has_feature": True,
+            }
+
+        if isinstance(audio, dict):
+            parsed_audio = dict(audio)
+        elif isinstance(audio, str):
+            try:
+                parsed_audio = json.loads(audio)
+            except json.JSONDecodeError:
+                parsed_audio = {"path": audio, "text": ""}
+        else:
+            raise TypeError(f"Unsupported audio input type: {type(audio)}")
+
+        if not isinstance(parsed_audio, dict):
+            raise TypeError(f"Expected audio payload to decode to dict, got: {type(parsed_audio)}")
+
+        audio_path = parsed_audio.get("path", parsed_audio.get("wav_path", "")) or ""
+        parsed_audio.setdefault("path", audio_path)
+        parsed_audio.setdefault("wav_path", audio_path)
+        parsed_audio.setdefault("text", "")
+
+        if not parsed_audio.get("token"):
+            if not audio_path:
+                raise ValueError("Audio input is missing both `token` and a usable audio path.")
+            parsed_audio["token"] = _estimate_audio_token_string(audio_path, processor)
+
+        parsed_audio["_audio_source"] = audio_path
+        parsed_audio["_has_feature"] = bool(audio_path)
+        return parsed_audio
+
+    def _parse_audios(
+        self, audios: list["AudioInput"], processor: Optional["MMProcessor"]
+    ) -> list[dict[str, object]]:
+        if processor is None:
+            raise ValueError("Processor is required to parse audio inputs.")
+
+        return [self._parse_audio_input(audio, processor) for audio in audios]
+
+    def _collect_audio_sources(
+        self, parsed_audios: list[dict[str, object]], processor: "MMProcessor"
+    ) -> list["AudioInput"]:
+        audio_sources = [audio_data["_audio_source"] for audio_data in parsed_audios if audio_data["_has_feature"]]
+        if not audio_sources:
+            return []
+
+        if any(isinstance(source, np.ndarray) for source in audio_sources):
+            normalized_sources: list["AudioInput"] = []
+            sampling_rate = getattr(processor, "audio_sampling_rate", 16000)
+            for source in audio_sources:
+                if isinstance(source, np.ndarray):
+                    normalized_sources.append(source)
+                else:
+                    normalized_sources.extend(
+                        FunAudioChatPlugin.load_audio_batch(
+                            [str(source)],
+                            sampling_rate=sampling_rate,
+                            audio_reader=self.audio_reader,
+                        )
+                    )
+
+            return normalized_sources
+
+        return [str(source) for source in audio_sources]
 
     @override
     def _get_mm_inputs(
@@ -170,11 +279,12 @@ class FunAudioChatPlugin(BasePlugin):
         bos_token: str = getattr(processor, "audio_bos_token")
         eos_token: str = getattr(processor, "audio_eos_token")
         messages = deepcopy(messages)
+        parsed_audios = self._parse_audios(audios, processor)
 
         TEMP_REPLACEMENT_MARKER = "<--[INTERNAL_AUDIO_MARKER]-->" 
         
         if self.expand_mm_tokens:
-            audio_tokens = [json.loads(audio)['token'] for audio in audios]
+            audio_tokens = [str(audio_data["token"]) for audio_data in parsed_audios]
             _audio_inputs = processor.speech_tokenizer(
                 audio_tokens, 
                 return_attention_mask=True, 
@@ -221,28 +331,25 @@ class FunAudioChatPlugin(BasePlugin):
         mm_inputs = {}
 
         if audios is not None:
-            # Parse JSON data
-            parsed_audios = [json.loads(audio) for audio in audios]
+            parsed_audios = self._parse_audios(audios, processor)
 
             # Filter assistant wav based on <|audio_bos|>
             for i in range(len(parsed_audios)):
-                if parsed_audios[i]['token'].startswith('<|audio_bos|>') and parsed_audios[i]['token'].count('AU') > 0:
-                    if 'wav_path' in parsed_audios[i]:
-                        parsed_audios[i]['wav_path'] = ''
-                    if 'path' in parsed_audios[i]:
-                        parsed_audios[i]['path'] = ''
+                if str(parsed_audios[i]["token"]).startswith('<|audio_bos|>') and str(parsed_audios[i]["token"]).count('AU') > 0:
+                    if "wav_path" in parsed_audios[i]:
+                        parsed_audios[i]["wav_path"] = ""
+                    if "path" in parsed_audios[i]:
+                        parsed_audios[i]["path"] = ""
+                    parsed_audios[i]["_audio_source"] = ""
+                    parsed_audios[i]["_has_feature"] = False
 
-            audio_paths = [
-                _audio_data.get('path', _audio_data.get('wav_path', '')) 
-                for _audio_data in parsed_audios 
-                if _audio_data.get('path', _audio_data.get('wav_path', '')) != ''
-            ]
-            audio_tokens = [_audio_data['token'] for _audio_data in parsed_audios]
-            audio_texts = [_audio_data['text'] for _audio_data in parsed_audios]
+            audio_sources = self._collect_audio_sources(parsed_audios, processor)
+            audio_tokens = [str(_audio_data["token"]) for _audio_data in parsed_audios]
+            audio_texts = [str(_audio_data.get("text", "")) for _audio_data in parsed_audios]
 
-            audio_inputs = self._get_mm_inputs(images, videos, audio_paths, processor)
+            audio_inputs = self._get_mm_inputs(images, videos, audio_sources, processor)
             audio_inputs['feature_exist_mask'] = torch.tensor(
-                [_audio_data.get('path', _audio_data.get('wav_path', '')) != '' for _audio_data in parsed_audios], 
+                [bool(_audio_data["_has_feature"]) for _audio_data in parsed_audios], 
                 dtype=torch.bool
             )
 

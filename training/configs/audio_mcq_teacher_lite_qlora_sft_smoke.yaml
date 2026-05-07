@@ -19,30 +19,31 @@ lora_target: all
 upcast_layernorm: true
 
 ### dataset
-dataset: audio-mcq-strongac-gemini-cot
+dataset: audio-mcq-teacher-lite-cot
 template: funaudiochat
 cutoff_len: 3072
+max_samples: 64
 overwrite_cache: true
-preprocessing_num_workers: 8
-dataloader_num_workers: 2
+preprocessing_num_workers: 4
+dataloader_num_workers: 1
 
 ### output
-output_dir: saves/Fun-Audio-Chat-8B/audio_mcq_qlora_sft
-logging_steps: 10
+output_dir: saves/Fun-Audio-Chat-8B/audio_mcq_teacher_lite_qlora_sft_smoke
+logging_steps: 5
 save_strategy: steps
-save_steps: 200
-save_total_limit: 2
+save_steps: 20
+save_total_limit: 1
 plot_loss: true
 overwrite_output_dir: true
 report_to: none
 
 ### train
 per_device_train_batch_size: 1
-gradient_accumulation_steps: 16
+gradient_accumulation_steps: 4
 learning_rate: 2.0e-4
-num_train_epochs: 3.0
+num_train_epochs: 1.0
 lr_scheduler_type: cosine
-warmup_ratio: 0.03
+warmup_ratio: 0.05
 bf16: true
 ddp_timeout: 180000000
 resume_from_checkpoint: null
@@ -50,7 +51,7 @@ resume_from_checkpoint: null
 ### eval
 # To enable validation later, set:
 # do_eval: true
-# val_size: 0.01
+# val_size: 0.1
 # per_device_eval_batch_size: 1
 # eval_strategy: steps
-# eval_steps: 200
+# eval_steps: 20
