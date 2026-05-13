@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("USE_FLAX", "0")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import numpy as np
 import torch
@@ -547,6 +548,7 @@ class FunAudioChatEnhancedTrainer(Trainer):
         audio_margin: float = 0.2,
         permutation_loss_weight: float = 0.0,
         permutation_margin: float = 0.0,
+        loss_chunk_size: int = 256,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -554,28 +556,54 @@ class FunAudioChatEnhancedTrainer(Trainer):
         self.audio_margin = audio_margin
         self.permutation_loss_weight = permutation_loss_weight
         self.permutation_margin = permutation_margin
+        self.loss_chunk_size = loss_chunk_size
 
-    @staticmethod
-    def compute_ce_loss(logits, labels):
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        return F.cross_entropy(
-            shift_logits.view(-1, shift_logits.size(-1)),
-            shift_labels.view(-1),
-            ignore_index=IGNORE_INDEX,
-        )
+    def compute_ce_loss(self, logits, labels):
+        flat_logits = logits[..., :-1, :].reshape(-1, logits.size(-1))
+        flat_labels = labels[..., 1:].reshape(-1)
+        valid = flat_labels.ne(IGNORE_INDEX)
+        if not valid.any():
+            return torch.tensor(0.0, device=logits.device)
 
-    @staticmethod
-    def compute_sequence_scores(logits, score_labels):
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = score_labels[..., 1:].contiguous()
+        valid_logits = flat_logits[valid]
+        valid_labels = flat_labels[valid]
+        loss_sum = torch.zeros((), device=logits.device, dtype=torch.float32)
+
+        for start in range(0, valid_labels.numel(), self.loss_chunk_size):
+            end = start + self.loss_chunk_size
+            chunk_loss = F.cross_entropy(
+                valid_logits[start:end].float(),
+                valid_labels[start:end],
+                reduction="sum",
+            )
+            loss_sum = loss_sum + chunk_loss
+
+        return loss_sum / valid_labels.numel()
+
+    def compute_sequence_scores(self, logits, score_labels):
+        shift_logits = logits[..., :-1, :]
+        shift_labels = score_labels[..., 1:]
         token_mask = shift_labels.ne(IGNORE_INDEX)
-        safe_labels = shift_labels.masked_fill(~token_mask, 0)
-        log_probs = F.log_softmax(shift_logits, dim=-1)
-        token_scores = log_probs.gather(-1, safe_labels.unsqueeze(-1)).squeeze(-1)
-        token_scores = token_scores * token_mask
+        scores = torch.zeros(shift_labels.shape, device=logits.device, dtype=torch.float32)
+
+        if token_mask.any():
+            flat_logits = shift_logits.reshape(-1, shift_logits.size(-1))
+            flat_labels = shift_labels.reshape(-1)
+            flat_mask = token_mask.reshape(-1)
+            valid_positions = flat_mask.nonzero(as_tuple=False).squeeze(1)
+
+            gathered_scores = []
+            for start in range(0, valid_positions.numel(), self.loss_chunk_size):
+                positions = valid_positions[start : start + self.loss_chunk_size]
+                chunk_logits = flat_logits.index_select(0, positions).float()
+                chunk_labels = flat_labels.index_select(0, positions)
+                target_logits = chunk_logits.gather(-1, chunk_labels.unsqueeze(-1)).squeeze(-1)
+                gathered_scores.append(target_logits - torch.logsumexp(chunk_logits, dim=-1))
+
+            scores.reshape(-1).index_copy_(0, valid_positions, torch.cat(gathered_scores))
+
         denom = token_mask.sum(dim=-1).clamp_min(1)
-        return token_scores.sum(dim=-1) / denom
+        return scores.sum(dim=-1) / denom
 
     def margin_loss(self, scores, positive_indices, negative_indices, margin):
         valid = positive_indices.ge(0) & negative_indices.ge(0)
@@ -611,11 +639,14 @@ class FunAudioChatEnhancedTrainer(Trainer):
         logits = outputs.text_logits
 
         # CE loss only on positive SFT views
-        ce_loss = (
-            self.compute_ce_loss(logits[is_positive], labels[is_positive])
-            if is_positive.any()
-            else torch.tensor(0.0, device=logits.device)
-        )
+        if is_positive.any():
+            pos_idx = is_positive.nonzero(as_tuple=False).squeeze(1)
+            ce_loss = self.compute_ce_loss(
+                logits.index_select(0, pos_idx).contiguous(),
+                labels.index_select(0, pos_idx).contiguous(),
+            )
+        else:
+            ce_loss = torch.tensor(0.0, device=logits.device)
         loss = ce_loss
 
         # Margin / consistency auxiliary losses
@@ -653,10 +684,18 @@ class FunAudioChatEnhancedTrainer(Trainer):
 # CLI
 # ---------------------------------------------------------------------------
 def parse_args():
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config_file", "--config-file", default=None)
+    config_args, remaining_args = pre_parser.parse_known_args()
+
     parser = argparse.ArgumentParser(description="Enhanced AudioMCQ SFT for Fun-Audio-Chat")
+    parser.add_argument("--config_file", "--config-file", default=None)
     parser.add_argument("--model_name_or_path", default="../pretrained_models/Fun-Audio-Chat-8B")
+    parser.add_argument("--attn_implementation", default=None)
+    parser.add_argument("--cuda_visible_devices", default=None)
     parser.add_argument("--data_path", default="datasets/audio-mcq-strongac-gemini-cot/train.jsonl")
     parser.add_argument("--output_dir", default="saves/Fun-Audio-Chat-8B/audio_mcq_enhanced_sft")
+    parser.add_argument("--log_dir", default=None)
     parser.add_argument("--max_samples", type=int, default=None)
     parser.add_argument("--max_audio_seconds", type=float, default=30.0)
     parser.add_argument("--num_train_epochs", type=float, default=3.0)
@@ -664,32 +703,71 @@ def parse_args():
     parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
     parser.add_argument("--learning_rate", type=float, default=2.0e-4)
     parser.add_argument("--warmup_ratio", type=float, default=0.03)
+    parser.add_argument("--optim", default="adamw_torch")
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--save_steps", type=int, default=500)
     parser.add_argument("--save_total_limit", type=int, default=2)
+    parser.add_argument("--loss_chunk_size", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--bf16", action="store_true", default=True)
-    parser.add_argument("--fp16", action="store_true")
-    parser.add_argument("--gradient_checkpointing", action="store_true", default=True)
+    add_bool_arg(parser, "bf16", default=True)
+    add_bool_arg(parser, "fp16", default=False)
+    add_bool_arg(parser, "trainer_bf16", default=False)
+    add_bool_arg(parser, "trainer_fp16", default=False)
+    add_bool_arg(parser, "gradient_checkpointing", default=True)
     parser.add_argument("--lora_r", type=int, default=16)
     parser.add_argument("--lora_alpha", type=int, default=32)
     parser.add_argument("--lora_dropout", type=float, default=0.05)
     parser.add_argument("--lora_target", default="all")
-    parser.add_argument("--use_counterfactual_audio", action="store_true")
-    parser.add_argument("--use_silence_view", action="store_true", default=True)
-    parser.add_argument("--use_mismatch_view", action="store_true", default=True)
-    parser.add_argument("--use_permuted_view", action="store_true")
+    add_bool_arg(parser, "use_counterfactual_audio", default=False)
+    add_bool_arg(parser, "use_silence_view", default=True)
+    add_bool_arg(parser, "use_mismatch_view", default=True)
+    add_bool_arg(parser, "use_permuted_view", default=False)
     parser.add_argument("--audio_margin_weight", type=float, default=0.0)
     parser.add_argument("--audio_margin", type=float, default=0.2)
     parser.add_argument("--permutation_loss_weight", type=float, default=0.0)
     parser.add_argument("--permutation_margin", type=float, default=0.0)
     parser.add_argument("--resume_from_checkpoint", type=str, default=None)
-    parser.add_argument("--allow_cpu", action="store_true")
-    return parser.parse_args()
+    add_bool_arg(parser, "allow_cpu", default=False)
+
+    if config_args.config_file:
+        config_values = load_yaml_config(config_args.config_file)
+        valid_keys = {action.dest for action in parser._actions}
+        unknown_keys = sorted(set(config_values) - valid_keys)
+        if unknown_keys:
+            raise ValueError(f"Unknown config keys in {config_args.config_file}: {unknown_keys}")
+        parser.set_defaults(**config_values)
+
+    return parser.parse_args(remaining_args)
+
+
+def add_bool_arg(parser, name: str, default: bool = False):
+    option = f"--{name}"
+    if hasattr(argparse, "BooleanOptionalAction"):
+        parser.add_argument(option, action=argparse.BooleanOptionalAction, default=default)
+    else:
+        parser.add_argument(option, dest=name, action="store_true", default=default)
+        parser.add_argument(f"--no-{name}", dest=name, action="store_false")
+
+
+def load_yaml_config(config_file: str):
+    try:
+        import yaml
+    except ImportError as exc:
+        raise RuntimeError("PyYAML is required to load --config_file YAML configs.") from exc
+
+    with open(config_file, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+
+    if not isinstance(config, dict):
+        raise ValueError(f"Config file must contain a YAML mapping: {config_file}")
+    return config
 
 
 def main():
     args = parse_args()
+    if args.cuda_visible_devices is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.cuda_visible_devices)
+
     if args.fp16 and args.bf16:
         raise ValueError("Use either --fp16 or --bf16, not both.")
     set_seed(args.seed)
@@ -718,6 +796,7 @@ def main():
         torch_dtype=model_dtype,
         quantization_config=bnb_config,
         device_map="auto",
+        attn_implementation=args.attn_implementation,
     )
 
     # Disable speech decoder head for S2T task (audio understanding / MCQ)
@@ -773,9 +852,9 @@ def main():
         logging_steps=args.logging_steps,
         save_steps=args.save_steps,
         save_total_limit=args.save_total_limit,
-        bf16=args.bf16,
-        fp16=args.fp16,
-        optim="adamw_torch",
+        bf16=args.trainer_bf16,
+        fp16=args.trainer_fp16,
+        optim=args.optim,
         lr_scheduler_type="cosine",
         report_to="none",
         remove_unused_columns=False,
@@ -806,6 +885,7 @@ def main():
         audio_margin=args.audio_margin,
         permutation_loss_weight=args.permutation_loss_weight,
         permutation_margin=args.permutation_margin,
+        loss_chunk_size=args.loss_chunk_size,
     )
 
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)

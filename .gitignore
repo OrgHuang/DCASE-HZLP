@@ -74,6 +74,7 @@ temp/
 nohup.out
 
 # Datasets and model artifacts
+data/
 datasets/
 training/datasets/
 pretrained_models/
@@ -82,3 +83,12 @@ output/
 outputs/
 saves/
 training/saves/
+
+# Large local audio/media files
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.ogg
+*.opus
+*.aac

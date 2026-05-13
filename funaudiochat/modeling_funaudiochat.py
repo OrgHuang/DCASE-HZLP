@@ -823,10 +823,10 @@ class FunAudioChatForConditionalGeneration(FunAudioChatPreTrainedModel, Generati
     def get_decoder(self):
         return self.language_model.get_decoder()
 
-    def tie_weights(self):
+    def tie_weights(self, missing_keys=None, recompute_mapping=True):
         # audio tie weights
         if self.audio_invert_tower is not None:
-            self._tie_or_clone_weights(self.audio_invert_tower.lm_head, self.audio_tower.embed_tokens)
+            self.audio_invert_tower.lm_head.weight = self.audio_tower.embed_tokens.weight
         return self.language_model.tie_weights()
 
     def resize_token_embeddings(self, new_num_tokens: Optional[int] = None, pad_to_multiple_of=None) -> nn.Embedding:

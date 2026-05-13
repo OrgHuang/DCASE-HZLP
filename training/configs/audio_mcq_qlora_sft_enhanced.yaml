@@ -1,0 +1,51 @@
+### model
+model_name_or_path: ../pretrained_models/Fun-Audio-Chat-8B
+attn_implementation: sdpa
+cuda_visible_devices: "0"
+
+### dataset
+data_path: datasets/audio-mcq-strongac-gemini-cot/train.jsonl
+max_samples: null
+max_audio_seconds: 30
+
+### output
+output_dir: saves/Fun-Audio-Chat-8B/audio_mcq_enhanced_sft
+log_dir: logs
+logging_steps: 10
+save_steps: 500
+save_total_limit: 2
+loss_chunk_size: 8
+
+### train
+num_train_epochs: 1
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 2.0e-4
+warmup_ratio: 0.03
+optim: paged_adamw_8bit
+seed: 42
+bf16: true
+fp16: false
+trainer_bf16: false
+trainer_fp16: false
+gradient_checkpointing: true
+
+### lora
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target: all
+
+### enhanced audio views / auxiliary losses
+use_counterfactual_audio: true
+use_silence_view: true
+use_mismatch_view: true
+use_permuted_view: true
+audio_margin_weight: 0.5
+audio_margin: 0.2
+permutation_loss_weight: 0.5
+permutation_margin: 0.2
+
+### resume / debug
+resume_from_checkpoint: null
+allow_cpu: false

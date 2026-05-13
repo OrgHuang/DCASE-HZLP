@@ -17,60 +17,92 @@ cd "${TRAINING_DIR}"
 export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
 
 # ---------------------------------------------------------------------------
-# Default hyperparameters (matching the original fast config)
+# Configuration
 # ---------------------------------------------------------------------------
-MODEL_PATH="${MODEL_PATH:-../pretrained_models/Fun-Audio-Chat-8B}"
-OUTPUT_DIR="${OUTPUT_DIR:-saves/Fun-Audio-Chat-8B/audio_mcq_enhanced_sft}"
-DATA_PATH="${DATA_PATH:-datasets/audio-mcq-strongac-gemini-cot/train.jsonl}"
+CONFIG_FILE="${CONFIG_FILE:-configs/audio_mcq_qlora_sft_enhanced.yaml}"
 
-# Training hyperparameters
-NUM_EPOCHS="${NUM_EPOCHS:-3}"
-BATCH_SIZE="${BATCH_SIZE:-4}"
-GRAD_ACC="${GRAD_ACC:-4}"
-LR="${LR:-2e-4}"
-LORA_R="${LORA_R:-16}"
-LORA_ALPHA="${LORA_ALPHA:-32}"
-LORA_DROPOUT="${LORA_DROPOUT:-0.05}"
-MAX_AUDIO_SECONDS="${MAX_AUDIO_SECONDS:-30}"
-SEED="${SEED:-42}"
+yaml_config_value() {
+  python -c 'import sys, yaml; data = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}; value = data.get(sys.argv[2]); print("" if value is None else value)' "$CONFIG_FILE" "$1"
+}
 
-# Counterfactual / margin-loss switches
-USE_COUNTERFACTUAL="${USE_COUNTERFACTUAL:-false}"
-USE_SILENCE="${USE_SILENCE:-true}"
-USE_MISMATCH="${USE_MISMATCH:-true}"
-USE_PERMUTED="${USE_PERMUTED:-false}"
-AUDIO_MARGIN_WEIGHT="${AUDIO_MARGIN_WEIGHT:-0.0}"
-AUDIO_MARGIN="${AUDIO_MARGIN:-0.2}"
-PERMUTATION_LOSS_WEIGHT="${PERMUTATION_LOSS_WEIGHT:-0.0}"
-PERMUTATION_MARGIN="${PERMUTATION_MARGIN:-0.0}"
-
-# Resume support
-RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
+LOG_DIR="${LOG_DIR:-$(yaml_config_value log_dir)}"
+LOG_DIR="${LOG_DIR:-logs}"
+CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-$(yaml_config_value cuda_visible_devices)}"
+if [ -n "${CUDA_VISIBLE_DEVICES}" ]; then
+  export CUDA_VISIBLE_DEVICES
+fi
+mkdir -p "${LOG_DIR}"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+EXPERIMENT_NAME=$(basename "${CONFIG_FILE}" .yaml)
+LOG_FILE="${LOG_DIR}/${EXPERIMENT_NAME}_${TIMESTAMP}_RANK${RANK:-0}.log"
 
 # ---------------------------------------------------------------------------
-# Build command-line flags
+# Optional environment-variable overrides
 # ---------------------------------------------------------------------------
-EXTRA_ARGS=()
+EXTRA_ARGS=("--config_file" "${CONFIG_FILE}")
 
-if [ "${USE_COUNTERFACTUAL}" = "true" ] || [ "${AUDIO_MARGIN_WEIGHT}" != "0.0" ]; then
-  EXTRA_ARGS+=("--use_counterfactual_audio")
-fi
+append_value_override() {
+  local env_name="$1"
+  local arg_name="$2"
+  local value="${!env_name:-}"
 
-if [ "${USE_SILENCE}" = "true" ]; then
-  EXTRA_ARGS+=("--use_silence_view")
-fi
+  if [ -n "${value}" ]; then
+    EXTRA_ARGS+=("--${arg_name}" "${value}")
+  fi
+}
 
-if [ "${USE_MISMATCH}" = "true" ]; then
-  EXTRA_ARGS+=("--use_mismatch_view")
-fi
+append_bool_override() {
+  local env_name="$1"
+  local arg_name="$2"
+  local value="${!env_name:-}"
 
-if [ "${USE_PERMUTED}" = "true" ] || [ "${PERMUTATION_LOSS_WEIGHT}" != "0.0" ]; then
-  EXTRA_ARGS+=("--use_permuted_view")
-fi
+  if [ -z "${value}" ]; then
+    return
+  fi
 
-if [ -n "${RESUME_FROM_CHECKPOINT}" ]; then
-  EXTRA_ARGS+=("--resume_from_checkpoint" "${RESUME_FROM_CHECKPOINT}")
-fi
+  if [ "${value}" = "true" ]; then
+    EXTRA_ARGS+=("--${arg_name}")
+  elif [ "${value}" = "false" ]; then
+    EXTRA_ARGS+=("--no-${arg_name}")
+  else
+    echo "Error: ${env_name} must be true or false, got: ${value}"
+    exit 1
+  fi
+}
+
+append_value_override MODEL_PATH model_name_or_path
+append_value_override ATTN_IMPLEMENTATION attn_implementation
+append_value_override DATA_PATH data_path
+append_value_override OUTPUT_DIR output_dir
+append_value_override MAX_SAMPLES max_samples
+append_value_override MAX_AUDIO_SECONDS max_audio_seconds
+append_value_override NUM_EPOCHS num_train_epochs
+append_value_override BATCH_SIZE per_device_train_batch_size
+append_value_override GRAD_ACC gradient_accumulation_steps
+append_value_override LR learning_rate
+append_value_override WARMUP_RATIO warmup_ratio
+append_value_override LOGGING_STEPS logging_steps
+append_value_override SAVE_STEPS save_steps
+append_value_override SAVE_TOTAL_LIMIT save_total_limit
+append_value_override SEED seed
+append_value_override LORA_R lora_r
+append_value_override LORA_ALPHA lora_alpha
+append_value_override LORA_DROPOUT lora_dropout
+append_value_override LORA_TARGET lora_target
+append_value_override AUDIO_MARGIN_WEIGHT audio_margin_weight
+append_value_override AUDIO_MARGIN audio_margin
+append_value_override PERMUTATION_LOSS_WEIGHT permutation_loss_weight
+append_value_override PERMUTATION_MARGIN permutation_margin
+append_value_override RESUME_FROM_CHECKPOINT resume_from_checkpoint
+
+append_bool_override BF16 bf16
+append_bool_override FP16 fp16
+append_bool_override GRADIENT_CHECKPOINTING gradient_checkpointing
+append_bool_override USE_COUNTERFACTUAL use_counterfactual_audio
+append_bool_override USE_SILENCE use_silence_view
+append_bool_override USE_MISMATCH use_mismatch_view
+append_bool_override USE_PERMUTED use_permuted_view
+append_bool_override ALLOW_CPU allow_cpu
 
 # ---------------------------------------------------------------------------
 # Launch
@@ -78,37 +110,21 @@ fi
 echo "========================================"
 echo "Fun-Audio-Chat Enhanced AudioMCQ SFT"
 echo "========================================"
-echo "Model:      ${MODEL_PATH}"
-echo "Data:       ${DATA_PATH}"
-echo "Output:     ${OUTPUT_DIR}"
-echo "Epochs:     ${NUM_EPOCHS}"
-echo "Batch size: ${BATCH_SIZE} (grad_acc=${GRAD_ACC})"
-echo "LR:         ${LR}"
-echo "LoRA:       r=${LORA_R}, alpha=${LORA_ALPHA}"
-echo "Margin:     weight=${AUDIO_MARGIN_WEIGHT}, margin=${AUDIO_MARGIN}"
-echo "Permutation: weight=${PERMUTATION_LOSS_WEIGHT}, margin=${PERMUTATION_MARGIN}"
+echo "Config:     ${CONFIG_FILE}"
+echo "Overrides:  ${EXTRA_ARGS[*]:2}"
+echo "CUDA GPUs:  ${CUDA_VISIBLE_DEVICES:-all}"
+echo "Log file:   ${LOG_FILE}"
 echo "========================================"
 
 python "${TRAINING_DIR}/train_audio_mcq_enhanced.py" \
-  --model_name_or_path "${MODEL_PATH}" \
-  --data_path "${DATA_PATH}" \
-  --output_dir "${OUTPUT_DIR}" \
-  --num_train_epochs "${NUM_EPOCHS}" \
-  --per_device_train_batch_size "${BATCH_SIZE}" \
-  --gradient_accumulation_steps "${GRAD_ACC}" \
-  --learning_rate "${LR}" \
-  --lora_r "${LORA_R}" \
-  --lora_alpha "${LORA_ALPHA}" \
-  --lora_dropout "${LORA_DROPOUT}" \
-  --max_audio_seconds "${MAX_AUDIO_SECONDS}" \
-  --save_steps 500 \
-  --save_total_limit 2 \
-  --logging_steps 10 \
-  --seed "${SEED}" \
-  --bf16 \
-  --gradient_checkpointing \
-  --audio_margin_weight "${AUDIO_MARGIN_WEIGHT}" \
-  --audio_margin "${AUDIO_MARGIN}" \
-  --permutation_loss_weight "${PERMUTATION_LOSS_WEIGHT}" \
-  --permutation_margin "${PERMUTATION_MARGIN}" \
-  "${EXTRA_ARGS[@]}"
+  "${EXTRA_ARGS[@]}" 2>&1 | tee "${LOG_FILE}"
+
+TRAINING_EXIT_CODE=${PIPESTATUS[0]}
+if [ ${TRAINING_EXIT_CODE} -ne 0 ]; then
+  echo "Training failed with exit code: ${TRAINING_EXIT_CODE}" | tee -a "${LOG_FILE}"
+  echo "Log saved to: ${LOG_FILE}" | tee -a "${LOG_FILE}"
+  exit ${TRAINING_EXIT_CODE}
+fi
+
+echo "Training completed successfully." | tee -a "${LOG_FILE}"
+echo "Log saved to: ${LOG_FILE}" | tee -a "${LOG_FILE}"
