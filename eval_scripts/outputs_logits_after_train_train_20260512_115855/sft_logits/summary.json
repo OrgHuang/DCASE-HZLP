@@ -1,0 +1,14 @@
+{
+  "total_samples": 1607,
+  "correct": 974,
+  "wrong": 633,
+  "accuracy": 0.6061,
+  "yes_token_ids": [
+    7414,
+    9454
+  ],
+  "yes_labels": [
+    " Yes",
+    "Yes"
+  ]
+}
